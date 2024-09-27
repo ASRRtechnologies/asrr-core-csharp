@@ -25,7 +25,7 @@ using static Nuke.Common.Tools.DotNet.DotNetTasks;
     FetchDepth = 0,
     OnPushBranches = ["main", "dev", "releases/**"],
     OnPullRequestBranches = ["releases/**"],
-    InvokedTargets = [ nameof(Clean) ],
+    InvokedTargets = [ nameof(Pack) ],
     EnableGitHubToken = true,
     ImportSecrets = [nameof(NuGetApiKey)]
 )]
@@ -48,7 +48,7 @@ class Build : NukeBuild
     
     [Solution(GenerateProjects = true)] readonly Solution Solution;
     [GitRepository] readonly GitRepository GitRepository;
-    [GitVersion] readonly GitVersion GitVersion;
+    [GitVersion(NoFetch = true)] readonly GitVersion GitVersion;
     
     static GitHubActions GitHubActions => GitHubActions.Instance;
     static AbsolutePath ArtifactsDirectory => RootDirectory / ".artifacts";
@@ -60,18 +60,18 @@ class Build : NukeBuild
     Target Print => _ => _
         .Executes(() =>
         {
-            Log.Information("GitVersion = {Value}", GitVersion?.NuGetVersionV2 ?? "Bloop");
+            Log.Information("GitVersion = {Value}", GitVersion.MajorMinorPatch ?? "Not available");
             Log.Information("Current Config = {Value}", Configuration.ToString());
             Log.Information("GitHub NuGet feed = {Value}", GitHubNuGetFeed);
+            Log.Information("GitVer = {Value}", GitVersion);
         });
 
     Target Clean => _ => _
         .Before(Restore)
         .Executes(() =>
         {
-            BuildProjectDirectory.GlobDirectories("**/bin", "**/obj").DeleteDirectories();
-            ArtifactsDirectory.CreateOrCleanDirectory();
             DotNetClean(c => c.SetProject(Solution.ASRR_Core));
+            ArtifactsDirectory.CreateOrCleanDirectory();
         });
 
     Target Restore => _ => _
