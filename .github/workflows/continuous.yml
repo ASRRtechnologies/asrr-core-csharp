@@ -46,8 +46,6 @@ jobs:
         env:
           NuGetApiKey: ${{ secrets.NUGET_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: 'List Artifacts Directory'
-        run: dir artifacts
       - name: 'Publish: artifacts'
         uses: actions/upload-artifact@v3
         with:
