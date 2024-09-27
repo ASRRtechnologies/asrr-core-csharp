@@ -3,6 +3,7 @@ using System.Linq;
 using System.Security.Cryptography.Pkcs;
 using Nuke.Common;
 using Nuke.Common.CI;
+using Nuke.Common.CI.GitHubActions;
 using Nuke.Common.Execution;
 using Nuke.Common.Git;
 using Nuke.Common.IO;
@@ -17,6 +18,17 @@ using static Nuke.Common.IO.FileSystemTasks;
 using static Nuke.Common.IO.PathConstruction;
 using static Nuke.Common.Tools.DotNet.DotNetTasks;
 
+[GitHubActions(
+    name: "continuous",
+    image: GitHubActionsImage.WindowsLatest,
+    AutoGenerate = true,
+    FetchDepth = 0,
+    OnPushBranches = ["main", "dev", "releases/**"],
+    OnPullRequestBranches = ["releases/**"],
+    InvokedTargets = [ nameof(Clean) ],
+    EnableGitHubToken = true,
+    ImportSecrets = [nameof(NuGetApiKey)]
+)]
 class Build : NukeBuild
 {
     /// Support plugins are available for:
@@ -25,24 +37,32 @@ class Build : NukeBuild
     ///   - Microsoft VisualStudio     https://nuke.build/visualstudio
     ///   - Microsoft VSCode           https://nuke.build/vscode
 
-    public static int Main () => Execute<Build>(x => x.Compile);
+    public static int Main () => Execute<Build>(x => x.Pack);
 
     [Parameter("Configuration to build - Default is 'Debug' (local) or 'Release' (server)")]
     readonly Configuration Configuration = IsLocalBuild ? Configuration.Debug : Configuration.Release;
-    [Parameter] string NuGetApiUrl = "https://api.nuget.org/v3/index.json";
-    [Parameter] string NuGetApiKey;
+    [Parameter] string NuGetFeed = "https://api.nuget.org/v3/index.json";
+    [Parameter("NuGet API Key"), Secret] string NuGetApiKey;
+    [Parameter("Artifacts Type")] readonly string ArtifactsType;
+    [Parameter("Excluded Artifacts Type")] readonly string ExcludedArtifactsType;
     
-    [Solution] readonly Solution Solution;
+    [Solution(GenerateProjects = true)] readonly Solution Solution;
     [GitRepository] readonly GitRepository GitRepository;
     [GitVersion] readonly GitVersion GitVersion;
     
-    AbsolutePath ArtifactsDirectory => RootDirectory / "artifacts";
-    AbsolutePath NuGetDirectory => ArtifactsDirectory / "nuget";
+    static GitHubActions GitHubActions => GitHubActions.Instance;
+    static AbsolutePath ArtifactsDirectory => RootDirectory / ".artifacts";
+
+    string GitHubNuGetFeed => GitHubActions != null
+        ? $"https://nuget.pkg.github.com/{GitHubActions.RepositoryOwner}/index.json"
+        : null;
 
     Target Print => _ => _
         .Executes(() =>
         {
-            Log.Information("GitVersion = {Value}", GitVersion?.MajorMinorPatch ?? "Bloop");
+            Log.Information("GitVersion = {Value}", GitVersion?.NuGetVersionV2 ?? "Bloop");
+            Log.Information("Current Config = {Value}", Configuration.ToString());
+            Log.Information("GitHub NuGet feed = {Value}", GitHubNuGetFeed);
         });
 
     Target Clean => _ => _
@@ -51,13 +71,14 @@ class Build : NukeBuild
         {
             BuildProjectDirectory.GlobDirectories("**/bin", "**/obj").DeleteDirectories();
             ArtifactsDirectory.CreateOrCleanDirectory();
+            DotNetClean(c => c.SetProject(Solution.ASRR_Core));
         });
 
     Target Restore => _ => _
         .Executes(() =>
         {
             DotNetRestore(s => s
-                .SetProjectFile(Solution.GetProject("ASRR.Core"))
+                .SetProjectFile(Solution.ASRR_Core)
             );
         });
 
@@ -66,46 +87,66 @@ class Build : NukeBuild
         .Executes(() =>
         {
             DotNetBuild(s => s
-                .SetProjectFile(Solution.GetProject("ASRR.Core"))
+                .SetProjectFile(Solution.ASRR_Core)
                 .SetConfiguration(Configuration)
                 .EnableNoRestore()
             );
         });
 
     Target Pack => _ => _
+        .Requires(() => Configuration.Equals(Configuration.Release))
+        .Produces(ArtifactsDirectory / ArtifactsType)
         .DependsOn(Compile)
+        .Triggers(PublishToGithub, PublishToNuGet)
         .Executes(() =>
         {
             DotNetPack(s => s
-                .SetProject(Solution.GetProject("ASRR.Core"))
+                .SetProject(Solution.ASRR_Core)
                 .SetConfiguration(Configuration)
+                .SetOutputDirectory(ArtifactsDirectory)
                 .EnableNoBuild()
                 .EnableNoRestore()
-                .SetDescription("ASRR Core functionality library")
-                .SetPackageTags("asrr core c# library")
-                .SetVersion(GitVersion?.NuGetVersionV2 ?? "0.0.0")
-                .SetNoDependencies(true)
-                .SetOutputDirectory(NuGetDirectory)
+                .SetVersion(GitVersion.NuGetVersionV2)
+                .SetAssemblyVersion(GitVersion.AssemblySemVer)
+                .SetInformationalVersion(GitVersion.InformationalVersion)
+                .SetFileVersion(GitVersion.AssemblySemFileVer)
             );
         });
-
-    Target Push => _ => _
-        .DependsOn(Pack)
-        .Requires(() => NuGetApiUrl)
-        .Requires(() => NuGetApiKey)
+    
+    Target PublishToGithub => _ => _
+        .Description($"Publish to Github for Development builds.")
         .Requires(() => Configuration.Equals(Configuration.Release))
+        .OnlyWhenStatic(() => GitRepository.IsOnDevelopBranch() || GitHubActions.IsPullRequest)
         .Executes(() =>
         {
-            var nugetDirFiles = NuGetDirectory.GlobFiles("*.nupkg");
-            Assert.NotEmpty(nugetDirFiles);
-            nugetDirFiles
-                .Where(x => !x.ToString().EndsWith("symbols.nupkg"))
+            ArtifactsDirectory.GlobFiles(ArtifactsType)
+                .Where(x => !x.ToString().EndsWith(ExcludedArtifactsType))
                 .ForEach(x =>
                 {
                     DotNetNuGetPush(s => s
                         .SetTargetPath(x)
-                        .SetSource(NuGetApiUrl)
+                        .SetSource(GitHubNuGetFeed)
+                        .SetApiKey(GitHubActions.Token)
+                        .EnableSkipDuplicate()
+                    );
+                });
+        });
+
+    Target PublishToNuGet => _ => _
+        .Description($"Publishing to NuGet with the version.")
+        .Requires(() => Configuration.Equals(Configuration.Release))
+        .OnlyWhenStatic(() => GitRepository.IsOnMainOrMasterBranch())
+        .Executes(() =>
+        {
+            ArtifactsDirectory.GlobFiles(ArtifactsType)
+                .Where(x => !x.ToString().EndsWith(ExcludedArtifactsType))
+                .ForEach(x =>
+                {
+                    DotNetNuGetPush(s => s
+                        .SetTargetPath(x)
+                        .SetSource(NuGetFeed)
                         .SetApiKey(NuGetApiKey)
+                        .EnableSkipDuplicate()
                     );
                 });
         });
