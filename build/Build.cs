@@ -51,7 +51,7 @@ class Build : NukeBuild
     [GitVersion(NoFetch = true)] readonly GitVersion GitVersion;
     
     static GitHubActions GitHubActions => GitHubActions.Instance;
-    static AbsolutePath ArtifactsDirectory => RootDirectory / ".artifacts";
+    static AbsolutePath ArtifactsDirectory => RootDirectory / "artifacts";
 
     string GitHubNuGetFeed => GitHubActions != null
         ? $"https://nuget.pkg.github.com/{GitHubActions.RepositoryOwner}/index.json"
