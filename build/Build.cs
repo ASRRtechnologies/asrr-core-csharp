@@ -58,12 +58,14 @@ class Build : NukeBuild
         : null;
 
     Target Print => _ => _
+        .Before(Clean)
         .Executes(() =>
         {
             Log.Information("GitVersion = {Value}", GitVersion.MajorMinorPatch ?? "Not available");
             Log.Information("Current Config = {Value}", Configuration.ToString());
             Log.Information("GitHub NuGet feed = {Value}", GitHubNuGetFeed);
             Log.Information("GitVer = {Value}", GitVersion);
+            Log.Information("NuGet feed = {Value}", NuGetFeed);
         });
 
     Target Clean => _ => _
@@ -138,6 +140,7 @@ class Build : NukeBuild
         .OnlyWhenStatic(() => GitRepository.IsOnMainOrMasterBranch())
         .Executes(() =>
         {
+            Log.Information($"Pushing package to NuGet feed...");
             ArtifactsDirectory.GlobFiles(ArtifactsType)
                 .Where(x => !x.ToString().EndsWith(ExcludedArtifactsType))
                 .ForEach(x =>
