@@ -1,0 +1,20 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ASRR.Core", "ASRR.Core\ASRR.Core.csproj", "{3992E9E1-41BB-449F-9525-B565A2EF5407}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Build", "build\Build.csproj", "{B6E24397-7CFE-42EA-9750-CF0306EAA390}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B6E24397-7CFE-42EA-9750-CF0306EAA390}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B6E24397-7CFE-42EA-9750-CF0306EAA390}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3992E9E1-41BB-449F-9525-B565A2EF5407}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3992E9E1-41BB-449F-9525-B565A2EF5407}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3992E9E1-41BB-449F-9525-B565A2EF5407}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3992E9E1-41BB-449F-9525-B565A2EF5407}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
