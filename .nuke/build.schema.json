@@ -22,6 +22,10 @@
           "type": "boolean",
           "description": "Indicates to continue a previously failed build attempt"
         },
+        "Copyright": {
+          "type": "string",
+          "description": "Copyright Details"
+        },
         "ExcludedArtifactsType": {
           "type": "string",
           "description": "Excluded Artifacts Type"
@@ -90,6 +94,7 @@
             "enum": [
               "Clean",
               "Compile",
+              "CreateRelease",
               "Pack",
               "Print",
               "PublishToGithub",
@@ -110,6 +115,7 @@
             "enum": [
               "Clean",
               "Compile",
+              "CreateRelease",
               "Pack",
               "Print",
               "PublishToGithub",

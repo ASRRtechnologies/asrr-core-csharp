@@ -1,4 +1,8 @@
 {
   "$schema": "./build.schema.json",
-  "Solution": "ASRR.Core.sln"
+  "Solution": "ASRR.Core.sln",
+  "ArtifactsType": "*.nupkg",
+  "Copyright": "©ASRR 2024",
+  "ExcludedArtifactsType": "symbols.nupkg",
+  "NuGetFeed": "https://api.nuget.org/v3/index.json"
 }
