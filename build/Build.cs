@@ -1,7 +1,10 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Security.Cryptography.Pkcs;
+using System.Threading.Tasks;
 using Nuke.Common;
+using Nuke.Common.ChangeLog;
 using Nuke.Common.CI;
 using Nuke.Common.CI.GitHubActions;
 using Nuke.Common.Execution;
@@ -10,8 +13,11 @@ using Nuke.Common.IO;
 using Nuke.Common.ProjectModel;
 using Nuke.Common.Tooling;
 using Nuke.Common.Tools.DotNet;
+using Nuke.Common.Tools.GitHub;
 using Nuke.Common.Tools.GitVersion;
 using Nuke.Common.Utilities.Collections;
+using Octokit;
+using Octokit.Internal;
 using Serilog;
 using static Nuke.Common.EnvironmentInfo;
 using static Nuke.Common.IO.FileSystemTasks;
@@ -39,12 +45,13 @@ class Build : NukeBuild
 
     public static int Main () => Execute<Build>(x => x.Pack);
 
-    [Parameter("Configuration to build - Default is 'Debug' (local) or 'Release' (server)")]
+    [Nuke.Common.Parameter("Configuration to build - Default is 'Debug' (local) or 'Release' (server)")]
     readonly Configuration Configuration = IsLocalBuild ? Configuration.Debug : Configuration.Release;
-    [Parameter] string NuGetFeed = "https://api.nuget.org/v3/index.json";
-    [Parameter("NuGet API Key"), Secret] string NuGetApiKey;
-    [Parameter("Artifacts Type")] readonly string ArtifactsType;
-    [Parameter("Excluded Artifacts Type")] readonly string ExcludedArtifactsType;
+    [Nuke.Common.Parameter] string NuGetFeed = "https://api.nuget.org/v3/index.json";
+    [Nuke.Common.Parameter("NuGet API Key"), Secret] string NuGetApiKey;
+    [Nuke.Common.Parameter("Artifacts Type")] readonly string ArtifactsType;
+    [Nuke.Common.Parameter("Excluded Artifacts Type")] readonly string ExcludedArtifactsType;
+    [Nuke.Common.Parameter("Copyright Details")] readonly string Copyright;
     
     [Solution(GenerateProjects = true)] readonly Solution Solution;
     [GitRepository] readonly GitRepository GitRepository;
@@ -52,6 +59,9 @@ class Build : NukeBuild
     
     static GitHubActions GitHubActions => GitHubActions.Instance;
     static AbsolutePath ArtifactsDirectory => RootDirectory / "artifacts";
+
+    const string PackageContentType = "application/octet-stream";
+    static string ChangeLogFile => RootDirectory / "CHANGELOG.md";
 
     string GitHubNuGetFeed => GitHubActions != null
         ? $"https://nuget.pkg.github.com/{GitHubActions.RepositoryOwner}/index.json"
@@ -66,6 +76,7 @@ class Build : NukeBuild
             Log.Information("GitHub NuGet feed = {Value}", GitHubNuGetFeed);
             Log.Information("GitVer = {Value}", GitVersion);
             Log.Information("NuGet feed = {Value}", NuGetFeed);
+            Log.Information("GitHub Repo = {Value}", GitRepository);
         });
 
     Target Clean => _ => _
@@ -108,7 +119,7 @@ class Build : NukeBuild
                 .SetOutputDirectory(ArtifactsDirectory)
                 .EnableNoBuild()
                 .EnableNoRestore()
-                .SetVersion(GitVersion.NuGetVersionV2)
+                .SetVersion(GitVersion.MajorMinorPatch)
                 .SetAssemblyVersion(GitVersion.AssemblySemVer)
                 .SetInformationalVersion(GitVersion.InformationalVersion)
                 .SetFileVersion(GitVersion.AssemblySemFileVer)
@@ -117,6 +128,7 @@ class Build : NukeBuild
     
     Target PublishToGithub => _ => _
         .Description($"Publish to Github for Development builds.")
+        .Triggers(CreateRelease)
         .Requires(() => Configuration.Equals(Configuration.Release))
         .OnlyWhenStatic(() => GitRepository.IsOnDevelopBranch() || GitHubActions.IsPullRequest)
         .Executes(() =>
@@ -136,6 +148,7 @@ class Build : NukeBuild
 
     Target PublishToNuGet => _ => _
         .Description($"Publishing to NuGet with the version.")
+        .Triggers(CreateRelease)
         .Requires(() => Configuration.Equals(Configuration.Release))
         .OnlyWhenStatic(() => GitRepository.IsOnMainOrMasterBranch())
         .Executes(() =>
@@ -153,4 +166,60 @@ class Build : NukeBuild
                     );
                 });
         });
+    
+    Target CreateRelease => _ => _
+        .Description($"Creating release for the publishable version.")
+        .Requires(() => Configuration.Equals(Configuration.Release))
+        .OnlyWhenStatic(() => GitRepository.IsOnMainOrMasterBranch() || GitRepository.IsOnReleaseBranch())
+        .Executes(async () =>
+        {
+            var credentials = new Credentials(GitHubActions.Token);
+            GitHubTasks.GitHubClient = new GitHubClient(new ProductHeaderValue(nameof(NukeBuild)),
+                new InMemoryCredentialStore(credentials));
+
+            var (owner, name) = (GitRepository.GetGitHubOwner(), GitRepository.GetGitHubName());
+
+            var releaseTag = GitVersion.NuGetVersionV2;
+            var changeLogSectionEntries = ChangelogTasks.ExtractChangelogSectionNotes(ChangeLogFile);
+            var latestChangeLog = changeLogSectionEntries
+                .Aggregate((c, n) => c + Environment.NewLine + n);
+
+            var newRelease = new NewRelease(releaseTag)
+            {
+                TargetCommitish = GitVersion.Sha,
+                Draft = true,
+                Name = $"v{releaseTag}",
+                Prerelease = !string.IsNullOrEmpty(GitVersion.PreReleaseTag),
+                Body = latestChangeLog
+            };
+
+            var createdRelease = await GitHubTasks
+                .GitHubClient
+                .Repository
+                .Release.Create(owner, name, newRelease);
+
+            ArtifactsDirectory.GlobFiles(ArtifactsType)
+                .Where(x => !x.ToString().EndsWith(ExcludedArtifactsType))
+                .ForEach(async x => await UploadReleaseAssetToGithub(createdRelease, x));
+
+            await GitHubTasks
+                .GitHubClient
+                .Repository
+                .Release
+                .Edit(owner, name, createdRelease.Id, new ReleaseUpdate { Draft = false });
+        });
+
+
+    private static async Task UploadReleaseAssetToGithub(Release release, string asset)
+    {
+        await using var artifactStream = File.OpenRead(asset);
+        var fileName = Path.GetFileName(asset);
+        var assetUpload = new ReleaseAssetUpload
+        {
+            FileName = fileName,
+            ContentType = PackageContentType,
+            RawData = artifactStream,
+        };
+        await GitHubTasks.GitHubClient.Repository.Release.UploadAsset(release, assetUpload);
+    }
 }
