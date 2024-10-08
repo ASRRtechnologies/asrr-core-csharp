@@ -1,19 +1,22 @@
-﻿namespace ASRR.Core.Utilities;
+﻿using System;
 
-public class MathUtilities
+namespace ASRR.Core.Utilities
 {
-    public static double DegreesToRadians(double degrees)
+    public class MathUtilities
     {
-        return degrees * Math.PI / 180;
-    }
+        public static double DegreesToRadians(double degrees)
+        {
+            return degrees * Math.PI / 180;
+        }
 
-    public static double RadiansToDegrees(double radians)
-    {
-        return radians * 180 / Math.PI;
-    }
+        public static double RadiansToDegrees(double radians)
+        {
+            return radians * 180 / Math.PI;
+        }
 
-    public static bool ApproximateEquals(double one, double two, double epsilon = 0.05)
-    {
-        return Math.Abs(one - two) < epsilon;
+        public static bool ApproximateEquals(double one, double two, double epsilon = 0.05)
+        {
+            return Math.Abs(one - two) < epsilon;
+        }
     }
 } 
