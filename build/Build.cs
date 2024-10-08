@@ -1,17 +1,13 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography.Pkcs;
 using System.Threading.Tasks;
 using Nuke.Common;
 using Nuke.Common.ChangeLog;
-using Nuke.Common.CI;
 using Nuke.Common.CI.GitHubActions;
-using Nuke.Common.Execution;
 using Nuke.Common.Git;
 using Nuke.Common.IO;
 using Nuke.Common.ProjectModel;
-using Nuke.Common.Tooling;
 using Nuke.Common.Tools.DotNet;
 using Nuke.Common.Tools.GitHub;
 using Nuke.Common.Tools.GitVersion;
@@ -19,9 +15,6 @@ using Nuke.Common.Utilities.Collections;
 using Octokit;
 using Octokit.Internal;
 using Serilog;
-using static Nuke.Common.EnvironmentInfo;
-using static Nuke.Common.IO.FileSystemTasks;
-using static Nuke.Common.IO.PathConstruction;
 using static Nuke.Common.Tools.DotNet.DotNetTasks;
 
 [GitHubActions(
@@ -63,7 +56,7 @@ class Build : NukeBuild
     const string PackageContentType = "application/octet-stream";
     static string ChangeLogFile => RootDirectory / "CHANGELOG.md";
 
-    string GitHubNuGetFeed => GitHubActions != null
+    static string GitHubNuGetFeed => GitHubActions != null
         ? $"https://nuget.pkg.github.com/{GitHubActions.RepositoryOwner}/index.json"
         : null;
 
@@ -101,6 +94,7 @@ class Build : NukeBuild
         {
             DotNetBuild(s => s
                 .SetProjectFile(Solution.ASRR_Core)
+                .SetFramework("netstandard2.0")
                 .SetConfiguration(Configuration)
                 .EnableNoRestore()
             );

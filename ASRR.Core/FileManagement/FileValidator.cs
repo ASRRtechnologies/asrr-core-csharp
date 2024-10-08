@@ -1,22 +1,25 @@
-﻿namespace ASRR.Core.FileManagement;
+﻿using System.IO;
 
-public class FileValidator
+namespace ASRR.Core.FileManagement
 {
-    public static bool IsValidPath(string path) 
+    public class FileValidator
     {
-        return !string.IsNullOrEmpty(path) && path.Length <= 260 &&
-               !path.EndsWith('.') && !path.EndsWith(' ') && !path.EndsWith('\\') &&
-               !path.EndsWith('/') && !path.EndsWith(':') && !path.EndsWith('*') &&
-               !path.EndsWith('?') && !path.EndsWith('\'') && !path.EndsWith('<') &&
-               !path.EndsWith('>') && !path.EndsWith('|');
-    }
-    
-    public static bool EnsureFolderExists(string folderPath)
-    {
-        if (!Directory.Exists(folderPath))
+        public static bool IsValidPath(string path) 
         {
-            Directory.CreateDirectory(folderPath);
+            return !string.IsNullOrEmpty(path) && path.Length <= 260 &&
+                   !path.EndsWith(".") && !path.EndsWith(" ") && !path.EndsWith("\\") &&
+                   !path.EndsWith("/") && !path.EndsWith(":") && !path.EndsWith("*") &&
+                   !path.EndsWith("?") && !path.EndsWith("\'") && !path.EndsWith("<") &&
+                   !path.EndsWith(">") && !path.EndsWith("|");
         }
-        return true;
+    
+        public static bool EnsureFolderExists(string folderPath)
+        {
+            if (!Directory.Exists(folderPath))
+            {
+                Directory.CreateDirectory(folderPath);
+            }
+            return true;
+        }
     }
 }
